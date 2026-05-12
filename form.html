@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Formulário</title>
+
+<style>
+body {
+    font-family: Arial;
+    background-color: #f5f7fa;
+    margin: 0;
+}
+
+.container {
+    max-width: 500px;
+    margin: 40px auto;
+    background: white;
+    padding: 25px 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+h2 {
+    margin-bottom: 20px;
+}
+
+input, select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    transition: border 0.2s, box-shadow 0.2s;
+}
+
+input:focus, select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 5px rgba(0,123,255,0.3);
+    outline: none;
+}
+
+/* BOTÃO */
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    border: none;
+    color: white;
+    font-weight: bold;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+/* CAMPOS + animação */
+.campo {
+    margin-bottom: 20px;
+    opacity: 1;
+    max-height: 200px;
+    overflow: hidden;
+    transform: translateY(0);
+
+    transition:
+        opacity 0.3s ease,
+        max-height 0.3s ease,
+        transform 0.3s ease;
+}
+
+.campo.oculto {
+    opacity: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    transform: translateY(-10px);
+}
+
+.campo:hover {
+    transform: scale(1.01);
+}
+
+/* validação visual */
+.erro-campo {
+    border: 2px solid red !important;
+}
+
+.mensagem-erro {
+    color: red;
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+/* mensagens backend */
+.sucesso, .erro {
+    border-radius: 6px;
+    font-weight: bold;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.sucesso {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.erro {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+</style>
+
+<script>
+
+function normalizar(v){
+    return (v ?? "").toString().trim().toLowerCase();
+}
+
+
+// ✅ DEPENDÊNCIA
+function verificarCondicoes(){
+    document.querySelectorAll("[data-depende-id]").forEach(div => {
+
+        let dependeId = div.dataset.dependeId;
+        let valorCond = normalizar(div.dataset.valor);
+
+        if (!dependeId){
+            div.classList.remove("oculto");
+            return;
+        }
+
+        let campoBase = document.getElementById(dependeId);
+
+        if (!campoBase){
+            div.classList.add("oculto");
+            return;
+        }
+
+        let valorAtual = normalizar(campoBase.value);
+
+        if (valorAtual === valorCond){
+            div.classList.remove("oculto");
+        } else {
+            div.classList.add("oculto");
+
+            let campoAtual = div.querySelector("input, select");
+            if (campoAtual){
+                campoAtual.value = "";
+            }
+        }
+    });
+}
+
+
+// ✅ VALIDAÇÃO VISUAL (RESTAURADA)
+function validarFormulario(event){
+
+    let valido = true;
+
+    document.querySelectorAll(".mensagem-erro").forEach(e => e.remove());
+    document.querySelectorAll(".erro-campo").forEach(e => e.classList.remove("erro-campo"));
+
+    document.querySelectorAll("input, select").forEach(campo => {
+
+        if (campo.offsetParent !== null){
+
+            let obrigatorio = campo.dataset.required === "true";
+
+            if (obrigatorio && normalizar(campo.value) === ""){
+
+                valido = false;
+
+                campo.classList.add("erro-campo");
+
+                let msg = document.createElement("div");
+                msg.className = "mensagem-erro";
+                msg.innerText = "Este campo é obrigatório.";
+
+                campo.parentNode.appendChild(msg);
+            }
+        }
+    });
+
+    if (!valido){
+        event.preventDefault();
+    }
+
+    return valido;
+}
+
+
+// eventos
+document.addEventListener("change", verificarCondicoes);
+window.onload = verificarCondicoes;
+
+</script>
+
+</head>
+<body>
+
+<div class="container">
+
+<h2>Formulário</h2>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+        <div class="{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+{% endwith %}
+
+<!-- ✅ FORM CORRIGIDO -->
+<form method="POST" action="/resposta" onsubmit="return validarFormulario(event)">
+
+{% for p in perguntas %}
+
+<div class="campo"
+     data-depende-id="{{ p.depende_id }}"
+     data-valor="{{ p.valor_condicao }}">
+
+<label>
+    <strong>{{ p.pergunta }}</strong>
+
+    {% set obrig = (p.obrigatorio|string).lower() in ['sim','true','1'] %}
+    {% if obrig %}
+        <span style="color:red">*</span>
+    {% endif %}
+</label>
+
+{% if p.tipo == 'texto' %}
+<input type="text"
+       name="{{ p.id }}"
+       id="{{ p.id }}"
+       data-required="{{ 'true' if obrig else 'false' }}">
+
+{% elif p.tipo == 'numero' %}
+<input type="number"
+       name="{{ p.id }}"
+       id="{{ p.id }}"
+       data-required="{{ 'true' if obrig else 'false' }}">
+
+{% elif p.tipo == 'lista' %}
+<select name="{{ p.id }}"
+        id="{{ p.id }}"
+        data-required="{{ 'true' if obrig else 'false' }}"
+        onchange="verificarCondicoes()">
+
+<option value="">Selecione</option>
+
+{% for opcao in p.opcoes.split(';') %}
+<option value="{{ opcao.strip() }}">{{ opcao.strip() }}</option>
+{% endfor %}
+
+</select>
+
+{% endif %}
+
+</div>
+
+{% endfor %}
+
+<button type="submit">Enviar</button>
+
+</form>
+
+</div>
+
+</body>
+</html>
