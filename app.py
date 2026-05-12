@@ -4,16 +4,42 @@ import os
 from datetime import datetime
 import re
 
+# ✅ NOVOS IMPORTS GOOGLE
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
 
+# ✅ FUNÇÃO PARA LIMPAR IDS
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
 
 
+# ✅ CONEXÃO COM GOOGLE SHEETS
+def conectar_planilha():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    caminho_credenciais = os.path.join(base_dir, "credentials.json")
+
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+        caminho_credenciais, scope
+    )
+
+    cliente = gspread.authorize(creds)
+
+    # ✅ nome EXATO da sua planilha
+    return cliente.open("respostas_formulario").sheet1
+
+
+# ✅ CARREGAR PERGUNTAS DO EXCEL
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     caminho_excel = os.path.join(base_dir, nome_formulario)
@@ -41,7 +67,7 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     return perguntas
 
 
-# ✅ NOVA ROTA (URL AMIGÁVEL)
+# ✅ ROTA DO FORMULÁRIO
 @app.route('/form')
 def formulario():
     return render_template(
@@ -51,12 +77,13 @@ def formulario():
     )
 
 
-# ✅ (opcional) ainda mantém raiz funcionando
+# ✅ REDIRECIONAMENTO
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
 
 
+# ✅ PROCESSAMENTO DA RESPOSTA
 @app.route('/resposta', methods=['POST'])
 def resposta():
     perguntas = carregar_perguntas()
@@ -72,14 +99,17 @@ def resposta():
         depende = p.get("depende_id", "")
         cond = str(p.get("valor_condicao", "")).strip().lower()
 
+        # ✅ valida dependência
         if depende:
             valor_dep = request.form.get(depende, "").strip().lower()
             if valor_dep != cond:
                 continue
 
+        # ✅ valida obrigatório
         if obrigatorio and valor == "":
             erros.append(f"O campo '{p['pergunta']}' é obrigatório.")
 
+        # ✅ valida lista
         if p["tipo"] == "lista":
             opcoes = p.get("opcoes", "")
             if opcoes:
@@ -94,20 +124,24 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
+    # ✅ adicionar data
     dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    caminho_respostas = os.path.join(base_dir, "respostas.xlsx")
+    # ✅ SALVAR NO GOOGLE SHEETS
+    try:
+        planilha = conectar_planilha()
 
-    df_novo = pd.DataFrame([dados])
+        # se primeira vez → cria cabeçalhos
+        if not planilha.get_all_values():
+            planilha.append_row(list(dados.keys()))
 
-    if os.path.exists(caminho_respostas):
-        df = pd.read_excel(caminho_respostas, engine="openpyxl")
-        df = pd.concat([df, df_novo], ignore_index=True)
-    else:
-        df = df_novo
+        # adiciona linha
+        planilha.append_row(list(dados.values()))
 
-    df.to_excel(caminho_respostas, index=False)
+    except Exception as e:
+        print("Erro ao salvar no Google Sheets:", e)
+        flash("Erro ao salvar resposta. Verifique configuração.", "erro")
+        return redirect(url_for("formulario"))
 
     flash("✅ Resposta salva com sucesso!", "sucesso")
     return redirect(url_for("formulario"))
