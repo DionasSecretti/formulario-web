@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import re
 
-# ✅ NOVOS IMPORTS GOOGLE
+# ✅ Google Sheets
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -12,34 +12,38 @@ app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
 
-# ✅ FUNÇÃO PARA LIMPAR IDS
+# ✅ LIMPAR ID
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
 
 
-# ✅ CONEXÃO COM GOOGLE SHEETS
+# ✅ CONECTAR GOOGLE SHEETS (SEGURA)
 def conectar_planilha():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    caminho_credenciais = os.path.join(base_dir, "credentials.json")
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        caminho_credenciais = os.path.join(base_dir, "credentials.json")
 
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
 
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        caminho_credenciais, scope
-    )
+        creds = ServiceAccountCredentials.from_json_keyfile_name(
+            caminho_credenciais, scope
+        )
 
-    cliente = gspread.authorize(creds)
+        cliente = gspread.authorize(creds)
 
-    # ✅ nome EXATO da sua planilha
-    return cliente.open("respostas_formulario").sheet1
+        return cliente.open("respostas_formulario").sheet1
+
+    except Exception as e:
+        print("ERRO AO CONECTAR GOOGLE SHEETS:", e)
+        return None  # 👈 MUITO IMPORTANTE (não quebra o app)
 
 
-# ✅ CARREGAR PERGUNTAS DO EXCEL
+# ✅ CARREGAR PERGUNTAS
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     caminho_excel = os.path.join(base_dir, nome_formulario)
@@ -67,23 +71,27 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     return perguntas
 
 
-# ✅ ROTA DO FORMULÁRIO
+# ✅ FORMULÁRIO
 @app.route('/form')
 def formulario():
-    return render_template(
-        'form.html',
-        perguntas=carregar_perguntas(),
-        titulo="Pesquisa de Clientes"
-    )
+    try:
+        perguntas = carregar_perguntas()
+        return render_template(
+            'form.html',
+            perguntas=perguntas,
+            titulo="Pesquisa de Clientes"
+        )
+    except Exception as e:
+        return f"Erro ao carregar formulário: {e}"
 
 
-# ✅ REDIRECIONAMENTO
+# ✅ HOME
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
 
 
-# ✅ PROCESSAMENTO DA RESPOSTA
+# ✅ PROCESSAR RESPOSTA
 @app.route('/resposta', methods=['POST'])
 def resposta():
     perguntas = carregar_perguntas()
@@ -99,17 +107,17 @@ def resposta():
         depende = p.get("depende_id", "")
         cond = str(p.get("valor_condicao", "")).strip().lower()
 
-        # ✅ valida dependência
+        # ✅ dependência
         if depende:
             valor_dep = request.form.get(depende, "").strip().lower()
             if valor_dep != cond:
                 continue
 
-        # ✅ valida obrigatório
+        # ✅ obrigatório
         if obrigatorio and valor == "":
             erros.append(f"O campo '{p['pergunta']}' é obrigatório.")
 
-        # ✅ valida lista
+        # ✅ lista
         if p["tipo"] == "lista":
             opcoes = p.get("opcoes", "")
             if opcoes:
@@ -124,28 +132,32 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
-    # ✅ adicionar data
+    # ✅ data
     dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    # ✅ SALVAR NO GOOGLE SHEETS
-    try:
-        planilha = conectar_planilha()
+    # ✅ SALVAR NO GOOGLE SHEETS (COM PROTEÇÃO)
+    planilha = conectar_planilha()
 
-        # se primeira vez → cria cabeçalhos
-        if not planilha.get_all_values():
-            planilha.append_row(list(dados.keys()))
+    if planilha:
+        try:
+            if not planilha.get_all_values():
+                planilha.append_row(list(dados.keys()))
 
-        # adiciona linha
-        planilha.append_row(list(dados.values()))
+            planilha.append_row(list(dados.values()))
 
-    except Exception as e:
-        print("Erro ao salvar no Google Sheets:", e)
-        flash("Erro ao salvar resposta. Verifique configuração.", "erro")
-        return redirect(url_for("formulario"))
+            flash("✅ Resposta salva com sucesso!", "sucesso")
 
-    flash("✅ Resposta salva com sucesso!", "sucesso")
+        except Exception as e:
+            print("ERRO AO SALVAR NA PLANILHA:", e)
+            flash("Erro ao salvar no Google Sheets.", "erro")
+
+    else:
+        flash("Erro de conexão com Google Sheets.", "erro")
+
     return redirect(url_for("formulario"))
 
 
+# ✅ RODAR APP (COMPATÍVEL COM RENDER)
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
