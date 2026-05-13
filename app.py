@@ -13,7 +13,7 @@ app.secret_key = "chave_secreta"
 # 🔐 CREDENCIAIS
 USUARIO_ADMIN = "admin"
 SENHA_ADMIN = "12345"
-
+SENHA_LIMPEZA = "abc123"  # ✅ senha extra para apagar
 
 # ==========================================
 # ✅ CONEXÃO COM BANCO
@@ -34,7 +34,6 @@ def conectar_banco():
     except Exception as e:
         print("Erro ao conectar no banco:", e)
         return None
-
 
 # ==========================================
 # ✅ CRIAR TABELA
@@ -59,19 +58,16 @@ def criar_tabela():
     except Exception as e:
         print("Erro ao criar tabela:", e)
 
-
 try:
     criar_tabela()
 except:
     pass
-
 
 # ==========================================
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
-
 
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
@@ -104,7 +100,6 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
         print("Erro ao carregar perguntas:", e)
         return []
 
-
 # ==========================================
 @app.route('/form')
 def formulario():
@@ -114,11 +109,9 @@ def formulario():
         titulo="Pesquisa de Clientes"
     )
 
-
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
-
 
 # ==========================================
 @app.route('/resposta', methods=['POST'])
@@ -177,31 +170,55 @@ def resposta():
 
     return redirect(url_for("formulario"))
 
-
 # ==========================================
-@app.route('/respostas')
-def ver_respostas():
+@app.route('/admin', methods=['GET'])
+def admin():
+    usuario = request.args.get("usuario")
     senha = request.args.get("senha")
 
-    if senha != SENHA_ADMIN:
+    if usuario != USUARIO_ADMIN or senha != SENHA_ADMIN:
         return "⛔ Acesso não autorizado"
 
-    conn = conectar_banco()
-    cursor = conn.cursor()
+    return f'''
+        <h2>⚙️ Painel Administrativo</h2>
 
-    cursor.execute("SELECT id, dados, data_resposta FROM respostas ORDER BY id DESC")
-    resultados = cursor.fetchall()
-    conn.close()
+        <h3>📥 Exportar respostas</h3>
+        <a href="/exportar">Ir para exportação</a>
 
-    html = "<h2>📋 Respostas</h2><table border=1><tr><th>ID</th><th>Data</th><th>Dados</th></tr>"
+        <hr>
 
-    for r in resultados:
-        html += f"<tr><td>{r[0]}</td><td>{r[2]}</td><td>{r[1]}</td></tr>"
+        <h3>🗑 Limpar banco</h3>
+        <form method="post" action="/limpar">
+            <label>Senha de confirmação:</label><br>
+            <input type="password" name="senha_limpeza"><br><br>
 
-    html += "</table>"
+            <button style="background:red;color:white;padding:10px;">
+                ⚠️ Limpar todos os dados
+            </button>
+        </form>
+    '''
 
-    return html
+# ==========================================
+@app.route('/limpar', methods=['POST'])
+def limpar_dados():
+    senha = request.form.get("senha_limpeza")
 
+    if senha != SENHA_LIMPEZA:
+        return "⛔ Senha de confirmação incorreta"
+
+    try:
+        conn = conectar_banco()
+        cursor = conn.cursor()
+
+        cursor.execute("TRUNCATE TABLE respostas RESTART IDENTITY")
+
+        conn.commit()
+        conn.close()
+
+        return "✅ Banco limpo com sucesso!"
+
+    except Exception as e:
+        return f"Erro ao limpar: {e}"
 
 # ==========================================
 @app.route('/exportar', methods=['GET', 'POST'])
@@ -219,7 +236,6 @@ def exportar():
 
             cursor.execute("SELECT dados, data_resposta FROM respostas")
             registros = cursor.fetchall()
-
             conn.close()
 
             lista = []
@@ -251,7 +267,6 @@ def exportar():
         except Exception as e:
             return f"Erro ao exportar: {e}"
 
-    # ✅ Tela simples de login
     return '''
         <h2>🔐 Acesso para Exportar</h2>
         <form method="post">
@@ -265,12 +280,10 @@ def exportar():
         </form>
     '''
 
-
 # ==========================================
 @app.route('/status')
 def status():
     return "APP ONLINE ✅"
-
 
 # ==========================================
 if __name__ == "__main__":
