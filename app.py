@@ -4,14 +4,14 @@ import os
 from datetime import datetime
 import re
 import psycopg2
-import tempfile
+import io
+import json
 
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
-# 🔐 SENHA DE ACESSO (ALTERE AQUI)
+# 🔐 SENHA DE ACESSO
 SENHA_ADMIN = "12345"
-
 
 # ==========================================
 # ✅ CONEXÃO COM BANCO
@@ -58,7 +58,6 @@ def criar_tabela():
         print("Erro ao criar tabela:", e)
 
 
-# inicialização segura
 try:
     criar_tabela()
 except:
@@ -66,16 +65,12 @@ except:
 
 
 # ==========================================
-# ✅ LIMPAR ID
-# ==========================================
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
 
 
-# ==========================================
-# ✅ CARREGAR PERGUNTAS
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     try:
@@ -93,7 +88,6 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
         perguntas = df.to_dict(orient='records')
 
         mapa_ids = {}
-
         for p in perguntas:
             p["id"] = limpar_id(p["pergunta"])
             mapa_ids[p["pergunta"]] = p["id"]
@@ -110,8 +104,6 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
 
 
 # ==========================================
-# ✅ FORMULÁRIO
-# ==========================================
 @app.route('/form')
 def formulario():
     return render_template(
@@ -126,8 +118,6 @@ def home():
     return redirect(url_for("formulario"))
 
 
-# ==========================================
-# ✅ SALVAR RESPOSTA
 # ==========================================
 @app.route('/resposta', methods=['POST'])
 def resposta():
@@ -174,7 +164,7 @@ def resposta():
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO respostas (dados, data_resposta) VALUES (%s, %s)",
-            (str(dados), dados["data_resposta"])
+            (json.dumps(dados), dados["data_resposta"])  # ✅ corrigido
         )
         conn.commit()
         conn.close()
@@ -186,8 +176,6 @@ def resposta():
     return redirect(url_for("formulario"))
 
 
-# ==========================================
-# ✅ VER RESPOSTAS (PROTEGIDO)
 # ==========================================
 @app.route('/respostas')
 def ver_respostas():
@@ -214,8 +202,6 @@ def ver_respostas():
 
 
 # ==========================================
-# ✅ EXPORTAR EXCEL (PROTEGIDO)
-# ==========================================
 @app.route('/exportar')
 def exportar():
     senha = request.args.get("senha")
@@ -223,18 +209,43 @@ def exportar():
     if senha != SENHA_ADMIN:
         return "⛔ Acesso não autorizado"
 
-    conn = conectar_banco()
-    df = pd.read_sql("SELECT dados, data_resposta FROM respostas", conn)
-    conn.close()
+    try:
+        conn = conectar_banco()
+        cursor = conn.cursor()
 
-    # expandir dicionário
-    dados_expandidos = df["dados"].apply(eval).apply(pd.Series)
-    df_final = pd.concat([dados_expandidos, df["data_resposta"]], axis=1)
+        cursor.execute("SELECT dados, data_resposta FROM respostas")
+        registros = cursor.fetchall()
 
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    df_final.to_excel(temp.name, index=False)
+        conn.close()
 
-    return send_file(temp.name, as_attachment=True)
+        lista = []
+
+        for r in registros:
+            try:
+                dados = json.loads(r[0])
+                dados["data_resposta"] = r[1]
+                lista.append(dados)
+            except:
+                continue
+
+        if not lista:
+            return "Nenhum dado encontrado"
+
+        df = pd.DataFrame(lista)
+
+        output = io.BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name="respostas_formulario.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        return f"Erro ao exportar: {e}"
 
 
 # ==========================================
