@@ -1,15 +1,20 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import pandas as pd
 import os
 from datetime import datetime
 import re
 import psycopg2
+import tempfile
 
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
+# 🔐 SENHA DE ACESSO (ALTERE AQUI)
+SENHA_ADMIN = "12345"
+
+
 # ==========================================
-# ✅ CONEXÃO COM BANCO (ROBUSTA)
+# ✅ CONEXÃO COM BANCO
 # ==========================================
 def conectar_banco():
     try:
@@ -19,12 +24,10 @@ def conectar_banco():
             print("DATABASE_URL NÃO CONFIGURADO!")
             return None
 
-        # Corrige compatibilidade Render
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
 
-        conn = psycopg2.connect(url, connect_timeout=5)
-        return conn
+        return psycopg2.connect(url, connect_timeout=5)
 
     except Exception as e:
         print("Erro ao conectar no banco:", e)
@@ -32,7 +35,7 @@ def conectar_banco():
 
 
 # ==========================================
-# ✅ CRIAR TABELA (NÃO TRAVA APP)
+# ✅ CRIAR TABELA
 # ==========================================
 def criar_tabela():
     try:
@@ -41,7 +44,6 @@ def criar_tabela():
             return
 
         cursor = conn.cursor()
-
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS respostas (
             id SERIAL PRIMARY KEY,
@@ -49,22 +51,18 @@ def criar_tabela():
             data_resposta TEXT
         )
         """)
-
         conn.commit()
         conn.close()
-
-        print("Tabela verificada/criada ✅")
 
     except Exception as e:
         print("Erro ao criar tabela:", e)
 
 
-# ✅ EXECUTA SEM BLOQUEAR STARTUP
+# inicialização segura
 try:
-    print("Inicializando banco...")
     criar_tabela()
-except Exception as e:
-    print("Erro inicial ignorado:", e)
+except:
+    pass
 
 
 # ==========================================
@@ -83,8 +81,6 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         caminho_excel = os.path.join(base_dir, nome_formulario)
-
-        print("Arquivo Excel:", caminho_excel)
 
         df = pd.read_excel(caminho_excel, engine="openpyxl")
 
@@ -118,29 +114,20 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
 # ==========================================
 @app.route('/form')
 def formulario():
-    try:
-        perguntas = carregar_perguntas()
-
-        return render_template(
-            'form.html',
-            perguntas=perguntas,
-            titulo="Pesquisa de Clientes"
-        )
-
-    except Exception as e:
-        return f"Erro ao carregar formulário: {e}"
+    return render_template(
+        'form.html',
+        perguntas=carregar_perguntas(),
+        titulo="Pesquisa de Clientes"
+    )
 
 
-# ==========================================
-# ✅ HOME
-# ==========================================
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
 
 
 # ==========================================
-# ✅ PROCESSAR RESPOSTA
+# ✅ SALVAR RESPOSTA
 # ==========================================
 @app.route('/resposta', methods=['POST'])
 def resposta():
@@ -153,26 +140,23 @@ def resposta():
         campo_id = p["id"]
         valor = request.form.get(campo_id, "").strip()
 
-        obrigatorio = str(p.get("obrigatorio", "")).strip().lower() in ["sim", "true", "1"]
+        obrigatorio = str(p.get("obrigatorio", "")).lower() in ["sim", "true", "1"]
         depende = p.get("depende_id", "")
-        cond = str(p.get("valor_condicao", "")).strip().lower()
+        cond = str(p.get("valor_condicao", "")).lower()
 
-        # dependência
         if depende:
-            valor_dep = request.form.get(depende, "").strip().lower()
+            valor_dep = request.form.get(depende, "").lower()
             if valor_dep != cond:
                 continue
 
-        # obrigatório
-        if obrigatorio and valor == "":
+        if obrigatorio and not valor:
             erros.append(f"O campo '{p['pergunta']}' é obrigatório.")
 
-        # lista
         if p["tipo"] == "lista":
             opcoes = p.get("opcoes", "")
             if opcoes:
-                lista_opcoes = [o.strip() for o in opcoes.split(";")]
-                if valor and valor not in lista_opcoes:
+                lista = [o.strip() for o in opcoes.split(";")]
+                if valor and valor not in lista:
                     erros.append(f"Valor inválido para '{p['pergunta']}'")
 
         dados[campo_id] = valor
@@ -184,45 +168,81 @@ def resposta():
 
     dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    # ==========================================
-    # ✅ SALVAR NO BANCO
-    # ==========================================
     conn = conectar_banco()
 
     if conn:
-        try:
-            cursor = conn.cursor()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO respostas (dados, data_resposta) VALUES (%s, %s)",
+            (str(dados), dados["data_resposta"])
+        )
+        conn.commit()
+        conn.close()
 
-            cursor.execute(
-                "INSERT INTO respostas (dados, data_resposta) VALUES (%s, %s)",
-                (str(dados), dados["data_resposta"])
-            )
-
-            conn.commit()
-            conn.close()
-
-            flash("✅ Resposta salva no banco com sucesso!", "sucesso")
-
-        except Exception as e:
-            print("Erro ao salvar:", e)
-            flash("Erro ao salvar no banco.", "erro")
-
+        flash("✅ Resposta salva com sucesso!", "sucesso")
     else:
-        flash("Erro de conexão com o banco.", "erro")
+        flash("Erro no banco", "erro")
 
     return redirect(url_for("formulario"))
 
 
 # ==========================================
-# ✅ STATUS (TESTE)
+# ✅ VER RESPOSTAS (PROTEGIDO)
+# ==========================================
+@app.route('/respostas')
+def ver_respostas():
+    senha = request.args.get("senha")
+
+    if senha != SENHA_ADMIN:
+        return "⛔ Acesso não autorizado"
+
+    conn = conectar_banco()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, dados, data_resposta FROM respostas ORDER BY id DESC")
+    resultados = cursor.fetchall()
+    conn.close()
+
+    html = "<h2>📋 Respostas</h2><table border=1><tr><th>ID</th><th>Data</th><th>Dados</th></tr>"
+
+    for r in resultados:
+        html += f"<tr><td>{r[0]}</td><td>{r[2]}</td><td>{r[1]}</td></tr>"
+
+    html += "</table>"
+
+    return html
+
+
+# ==========================================
+# ✅ EXPORTAR EXCEL (PROTEGIDO)
+# ==========================================
+@app.route('/exportar')
+def exportar():
+    senha = request.args.get("senha")
+
+    if senha != SENHA_ADMIN:
+        return "⛔ Acesso não autorizado"
+
+    conn = conectar_banco()
+    df = pd.read_sql("SELECT dados, data_resposta FROM respostas", conn)
+    conn.close()
+
+    # expandir dicionário
+    dados_expandidos = df["dados"].apply(eval).apply(pd.Series)
+    df_final = pd.concat([dados_expandidos, df["data_resposta"]], axis=1)
+
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    df_final.to_excel(temp.name, index=False)
+
+    return send_file(temp.name, as_attachment=True)
+
+
 # ==========================================
 @app.route('/status')
 def status():
     return "APP ONLINE ✅"
 
 
-# ==========================================
-# ✅ RODAR APP
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
