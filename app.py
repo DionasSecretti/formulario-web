@@ -16,6 +16,17 @@ USUARIO_ADMIN = "admin"
 SENHA_ADMIN = "12345"
 SENHA_LIMPEZA = "abc123"
 
+# 🌎 TIMEZONE PADRÃO
+TIMEZONE = ZoneInfo("America/Sao_Paulo")
+
+
+# ==========================================
+# ✅ FUNÇÃO PADRÃO DE DATA/HORA
+# ==========================================
+def agora_formatado():
+    return datetime.now(TIMEZONE).strftime("%d/%m/%Y %H:%M")
+
+
 # ==========================================
 # ✅ CONEXÃO COM BANCO
 # ==========================================
@@ -35,6 +46,7 @@ def conectar_banco():
     except Exception as e:
         print("Erro ao conectar no banco:", e)
         return None
+
 
 # ==========================================
 # ✅ CRIAR TABELA
@@ -59,16 +71,19 @@ def criar_tabela():
     except Exception as e:
         print("Erro ao criar tabela:", e)
 
+
 try:
     criar_tabela()
 except:
     pass
+
 
 # ==========================================
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
+
 
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
@@ -100,6 +115,7 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
         print("Erro ao carregar perguntas:", e)
         return []
 
+
 # ==========================================
 @app.route('/form')
 def formulario():
@@ -109,9 +125,11 @@ def formulario():
         titulo="Pesquisa de Clientes"
     )
 
+
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
+
 
 # ==========================================
 @app.route('/resposta', methods=['POST'])
@@ -151,7 +169,8 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
-    dados["data_resposta"] = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+    # ✅ DATA CORRETA (BRASIL)
+    dados["data_resposta"] = agora_formatado()
 
     conn = conectar_banco()
 
@@ -168,6 +187,7 @@ def resposta():
         flash("Erro no banco", "erro")
 
     return redirect(url_for("formulario"))
+
 
 # ==========================================
 @app.route('/admin')
@@ -197,6 +217,7 @@ def admin():
         </form>
     '''
 
+
 # ==========================================
 @app.route('/limpar', methods=['POST'])
 def limpar_dados():
@@ -218,6 +239,7 @@ def limpar_dados():
 
     except Exception as e:
         return f"Erro ao limpar: {e}"
+
 
 # ==========================================
 @app.route('/exportar', methods=['GET', 'POST'])
@@ -279,10 +301,12 @@ def exportar():
         </form>
     '''
 
+
 # ==========================================
 @app.route('/status')
 def status():
     return "APP ONLINE ✅"
+
 
 # ==========================================
 if __name__ == "__main__":
