@@ -9,78 +9,81 @@ body {
     font-family: Arial;
     background-color: #f5f7fa;
     margin: 0;
+    padding: 40px;
 }
 
+/* ✅ CONTAINER CENTRAL */
 .container {
     max-width: 500px;
-    margin: 40px auto;
+    margin: auto;
     background: white;
-    padding: 25px 30px;
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
 }
 
 h2 {
-    margin-bottom: 20px;
+    margin-bottom: 25px;
+    text-align: center;
 }
 
+/* ✅ CAMPOS */
+.campo {
+    margin-bottom: 22px;
+    transition: all 0.3s ease;
+}
+
+.campo label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: bold;
+}
+
+/* ✅ INPUT PADRÃO (CORRIGE CORTE) */
 input, select {
     width: 100%;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border: 1px solid #ccc;
     border-radius: 6px;
-    transition: border 0.2s, box-shadow 0.2s;
+    font-size: 14px;
+    box-sizing: border-box; /* ✅ ESSENCIAL */
 }
 
+/* ✅ FOCO BONITO */
 input:focus, select:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 5px rgba(0,123,255,0.3);
+    border-color: #1e73e8;
+    box-shadow: 0 0 6px rgba(30,115,232,0.2);
     outline: none;
 }
 
-/* BOTÃO */
+/* ✅ BOTÃO */
 button {
     width: 100%;
-    padding: 10px;
-    background-color: #007bff;
+    padding: 12px;
+    background-color: #1e73e8;
     border: none;
     color: white;
     font-weight: bold;
     border-radius: 6px;
     cursor: pointer;
+    font-size: 15px;
     transition: background 0.3s;
 }
 
 button:hover {
-    background-color: #0056b3;
+    background-color: #145bb5;
 }
 
-/* CAMPOS + animação */
-.campo {
-    margin-bottom: 20px;
-    opacity: 1;
-    max-height: 200px;
-    overflow: hidden;
-    transform: translateY(0);
-
-    transition:
-        opacity 0.3s ease,
-        max-height 0.3s ease,
-        transform 0.3s ease;
-}
-
+/* ✅ ANIMAÇÃO DE CAMPOS */
 .campo.oculto {
     opacity: 0;
     max-height: 0;
-    margin-bottom: 0;
+    overflow: hidden;
     transform: translateY(-10px);
+    margin-bottom: 0;
 }
 
-.campo:hover {
-    transform: scale(1.01);
-}
-
-/* validação visual */
+/* ✅ VALIDAÇÃO */
 .erro-campo {
     border: 2px solid red !important;
 }
@@ -91,7 +94,7 @@ button:hover {
     margin-top: 5px;
 }
 
-/* mensagens backend */
+/* ✅ MENSAGENS BACKEND */
 .sucesso, .erro {
     border-radius: 6px;
     font-weight: bold;
@@ -111,11 +114,9 @@ button:hover {
 </style>
 
 <script>
-
 function normalizar(v){
     return (v ?? "").toString().trim().toLowerCase();
 }
-
 
 // ✅ DEPENDÊNCIA
 function verificarCondicoes(){
@@ -151,8 +152,7 @@ function verificarCondicoes(){
     });
 }
 
-
-// ✅ VALIDAÇÃO VISUAL (RESTAURADA)
+// ✅ VALIDAÇÃO VISUAL
 function validarFormulario(event){
 
     let valido = true;
@@ -188,11 +188,8 @@ function validarFormulario(event){
     return valido;
 }
 
-
-// eventos
 document.addEventListener("change", verificarCondicoes);
 window.onload = verificarCondicoes;
-
 </script>
 
 </head>
@@ -202,13 +199,13 @@ window.onload = verificarCondicoes;
 
 <h2>Formulário</h2>
 
+<!-- ✅ mensagens -->
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
         <div class="{{ cat }}">{{ msg }}</div>
     {% endfor %}
 {% endwith %}
 
-<!-- ✅ FORM CORRIGIDO -->
 <form method="POST" action="/resposta" onsubmit="return validarFormulario(event)">
 
 {% for p in perguntas %}
@@ -218,8 +215,7 @@ window.onload = verificarCondicoes;
      data-valor="{{ p.valor_condicao }}">
 
 <label>
-    <strong>{{ p.pergunta }}</strong>
-
+    {{ p.pergunta }}
     {% set obrig = (p.obrigatorio|string).lower() in ['sim','true','1'] %}
     {% if obrig %}
         <span style="color:red">*</span>
@@ -251,7 +247,6 @@ window.onload = verificarCondicoes;
 {% endfor %}
 
 </select>
-
 {% endif %}
 
 </div>
