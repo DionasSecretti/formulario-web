@@ -10,8 +10,10 @@ import json
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
-# 🔐 SENHA DE ACESSO
+# 🔐 CREDENCIAIS
+USUARIO_ADMIN = "admin"
 SENHA_ADMIN = "12345"
+
 
 # ==========================================
 # ✅ CONEXÃO COM BANCO
@@ -164,7 +166,7 @@ def resposta():
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO respostas (dados, data_resposta) VALUES (%s, %s)",
-            (json.dumps(dados), dados["data_resposta"])  # ✅ corrigido
+            (json.dumps(dados), dados["data_resposta"])
         )
         conn.commit()
         conn.close()
@@ -202,50 +204,66 @@ def ver_respostas():
 
 
 # ==========================================
-@app.route('/exportar')
+@app.route('/exportar', methods=['GET', 'POST'])
 def exportar():
-    senha = request.args.get("senha")
+    if request.method == 'POST':
+        usuario = request.form.get("usuario")
+        senha = request.form.get("senha")
 
-    if senha != SENHA_ADMIN:
-        return "⛔ Acesso não autorizado"
+        if usuario != USUARIO_ADMIN or senha != SENHA_ADMIN:
+            return "⛔ Acesso não autorizado"
 
-    try:
-        conn = conectar_banco()
-        cursor = conn.cursor()
+        try:
+            conn = conectar_banco()
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT dados, data_resposta FROM respostas")
-        registros = cursor.fetchall()
+            cursor.execute("SELECT dados, data_resposta FROM respostas")
+            registros = cursor.fetchall()
 
-        conn.close()
+            conn.close()
 
-        lista = []
+            lista = []
 
-        for r in registros:
-            try:
-                dados = json.loads(r[0])
-                dados["data_resposta"] = r[1]
-                lista.append(dados)
-            except:
-                continue
+            for r in registros:
+                try:
+                    dados = json.loads(r[0])
+                    dados["data_resposta"] = r[1]
+                    lista.append(dados)
+                except:
+                    continue
 
-        if not lista:
-            return "Nenhum dado encontrado"
+            if not lista:
+                return "Nenhum dado encontrado"
 
-        df = pd.DataFrame(lista)
+            df = pd.DataFrame(lista)
 
-        output = io.BytesIO()
-        df.to_excel(output, index=False, engine='openpyxl')
-        output.seek(0)
+            output = io.BytesIO()
+            df.to_excel(output, index=False, engine='openpyxl')
+            output.seek(0)
 
-        return send_file(
-            output,
-            as_attachment=True,
-            download_name="respostas_formulario.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            return send_file(
+                output,
+                as_attachment=True,
+                download_name="respostas_formulario.xlsx",
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
-    except Exception as e:
-        return f"Erro ao exportar: {e}"
+        except Exception as e:
+            return f"Erro ao exportar: {e}"
+
+    # ✅ Tela simples de login
+    return '''
+        <h2>🔐 Acesso para Exportar</h2>
+        <form method="post">
+            <label>Usuário:</label><br>
+            <input type="text" name="usuario"><br><br>
+
+            <label>Senha:</label><br>
+            <input type="password" name="senha"><br><br>
+
+            <button type="submit">📥 Baixar Excel</button>
+        </form>
+    '''
 
 
 # ==========================================
