@@ -3,47 +3,60 @@ import pandas as pd
 import os
 from datetime import datetime
 import re
-
-# ✅ Google Sheets
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import psycopg2
 
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
+# ==========================================
+# ✅ CONEXÃO COM BANCO
+# ==========================================
+def conectar_banco():
+    try:
+        return psycopg2.connect(os.environ.get("DATABASE_URL"))
+    except Exception as e:
+        print("Erro ao conectar no banco:", e)
+        return None
 
+
+# ==========================================
+# ✅ CRIAR TABELA AUTOMÁTICA
+# ==========================================
+def criar_tabela():
+    conn = conectar_banco()
+    if not conn:
+        return
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS respostas (
+        id SERIAL PRIMARY KEY,
+        dados TEXT,
+        data_resposta TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# ✅ executa quando inicia
+criar_tabela()
+
+
+# ==========================================
 # ✅ LIMPAR ID
+# ==========================================
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
 
 
-# ✅ CONECTAR GOOGLE SHEETS (SEGURA)
-def conectar_planilha():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        caminho_credenciais = os.path.join(base_dir, "credentials.json")
-
-        scope = [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/drive"
-        ]
-
-        creds = ServiceAccountCredentials.from_json_keyfile_name(
-            caminho_credenciais, scope
-        )
-
-        cliente = gspread.authorize(creds)
-
-        return cliente.open("respostas_formulario").sheet1
-
-    except Exception as e:
-        print("ERRO AO CONECTAR GOOGLE SHEETS:", e)
-        return None  # 👈 MUITO IMPORTANTE (não quebra o app)
-
-
+# ==========================================
 # ✅ CARREGAR PERGUNTAS
+# ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     caminho_excel = os.path.join(base_dir, nome_formulario)
@@ -71,27 +84,32 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     return perguntas
 
 
+# ==========================================
 # ✅ FORMULÁRIO
+# ==========================================
 @app.route('/form')
 def formulario():
     try:
-        perguntas = carregar_perguntas()
         return render_template(
             'form.html',
-            perguntas=perguntas,
+            perguntas=carregar_perguntas(),
             titulo="Pesquisa de Clientes"
         )
     except Exception as e:
         return f"Erro ao carregar formulário: {e}"
 
 
+# ==========================================
 # ✅ HOME
+# ==========================================
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
 
 
+# ==========================================
 # ✅ PROCESSAR RESPOSTA
+# ==========================================
 @app.route('/resposta', methods=['POST'])
 def resposta():
     perguntas = carregar_perguntas()
@@ -107,17 +125,17 @@ def resposta():
         depende = p.get("depende_id", "")
         cond = str(p.get("valor_condicao", "")).strip().lower()
 
-        # ✅ dependência
+        # valida dependência
         if depende:
             valor_dep = request.form.get(depende, "").strip().lower()
             if valor_dep != cond:
                 continue
 
-        # ✅ obrigatório
+        # valida obrigatório
         if obrigatorio and valor == "":
             erros.append(f"O campo '{p['pergunta']}' é obrigatório.")
 
-        # ✅ lista
+        # valida lista
         if p["tipo"] == "lista":
             opcoes = p.get("opcoes", "")
             if opcoes:
@@ -132,32 +150,40 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
-    # ✅ data
     dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    # ✅ SALVAR NO GOOGLE SHEETS (COM PROTEÇÃO)
-    planilha = conectar_planilha()
+    # ==========================================
+    # ✅ SALVAR NO BANCO
+    # ==========================================
+    conn = conectar_banco()
 
-    if planilha:
+    if conn:
         try:
-            if not planilha.get_all_values():
-                planilha.append_row(list(dados.keys()))
+            cursor = conn.cursor()
 
-            planilha.append_row(list(dados.values()))
+            cursor.execute(
+                "INSERT INTO respostas (dados, data_resposta) VALUES (%s, %s)",
+                (str(dados), dados["data_resposta"])
+            )
 
-            flash("✅ Resposta salva com sucesso!", "sucesso")
+            conn.commit()
+            conn.close()
+
+            flash("✅ Resposta salva no banco com sucesso!", "sucesso")
 
         except Exception as e:
-            print("ERRO AO SALVAR NA PLANILHA:", e)
-            flash("Erro ao salvar no Google Sheets.", "erro")
+            print("Erro ao salvar:", e)
+            flash("Erro ao salvar no banco.", "erro")
 
     else:
-        flash("Erro de conexão com Google Sheets.", "erro")
+        flash("Erro de conexão com o banco.", "erro")
 
     return redirect(url_for("formulario"))
 
 
-# ✅ RODAR APP (COMPATÍVEL COM RENDER)
+# ==========================================
+# ✅ RODAR APP
+# ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
