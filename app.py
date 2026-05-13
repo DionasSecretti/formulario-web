@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 import pandas as pd
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import re
 import psycopg2
 import io
@@ -150,7 +151,7 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
-    dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    dados["data_resposta"] = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
 
     conn = conectar_banco()
 
