@@ -8,7 +8,6 @@ import psycopg2
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
-
 # ==========================================
 # ✅ CONEXÃO COM BANCO (ROBUSTA)
 # ==========================================
@@ -20,11 +19,11 @@ def conectar_banco():
             print("DATABASE_URL NÃO CONFIGURADO!")
             return None
 
-        # Ajuste padrão do Render
+        # Corrige compatibilidade Render
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
 
-        conn = psycopg2.connect(url)
+        conn = psycopg2.connect(url, connect_timeout=5)
         return conn
 
     except Exception as e:
@@ -33,7 +32,7 @@ def conectar_banco():
 
 
 # ==========================================
-# ✅ CRIAR TABELA (SEM TRAVAR APP)
+# ✅ CRIAR TABELA (NÃO TRAVA APP)
 # ==========================================
 def criar_tabela():
     try:
@@ -54,17 +53,18 @@ def criar_tabela():
         conn.commit()
         conn.close()
 
-        print("Tabela verificada/criada com sucesso.")
+        print("Tabela verificada/criada ✅")
 
     except Exception as e:
         print("Erro ao criar tabela:", e)
 
 
-# ✅ NÃO TRAVAR O APP NA INICIALIZAÇÃO
+# ✅ EXECUTA SEM BLOQUEAR STARTUP
 try:
+    print("Inicializando banco...")
     criar_tabela()
 except Exception as e:
-    print("Erro na inicialização:", e)
+    print("Erro inicial ignorado:", e)
 
 
 # ==========================================
@@ -77,12 +77,14 @@ def limpar_id(texto):
 
 
 # ==========================================
-# ✅ CARREGAR PERGUNTAS (COM PROTEÇÃO)
+# ✅ CARREGAR PERGUNTAS
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         caminho_excel = os.path.join(base_dir, nome_formulario)
+
+        print("Arquivo Excel:", caminho_excel)
 
         df = pd.read_excel(caminho_excel, engine="openpyxl")
 
@@ -155,17 +157,17 @@ def resposta():
         depende = p.get("depende_id", "")
         cond = str(p.get("valor_condicao", "")).strip().lower()
 
-        # ✅ dependência
+        # dependência
         if depende:
             valor_dep = request.form.get(depende, "").strip().lower()
             if valor_dep != cond:
                 continue
 
-        # ✅ obrigatório
+        # obrigatório
         if obrigatorio and valor == "":
             erros.append(f"O campo '{p['pergunta']}' é obrigatório.")
 
-        # ✅ lista
+        # lista
         if p["tipo"] == "lista":
             opcoes = p.get("opcoes", "")
             if opcoes:
@@ -180,7 +182,6 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
-    # ✅ data
     dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
     # ==========================================
@@ -213,7 +214,7 @@ def resposta():
 
 
 # ==========================================
-# ✅ HEALTH CHECK (IMPORTANTE PARA DEBUG)
+# ✅ STATUS (TESTE)
 # ==========================================
 @app.route('/status')
 def status():
