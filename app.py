@@ -8,41 +8,63 @@ import psycopg2
 app = Flask(__name__)
 app.secret_key = "chave_secreta"
 
+
 # ==========================================
-# ✅ CONEXÃO COM BANCO
+# ✅ CONEXÃO COM BANCO (ROBUSTA)
 # ==========================================
 def conectar_banco():
     try:
-        return psycopg2.connect(os.environ.get("DATABASE_URL"))
+        url = os.environ.get("DATABASE_URL")
+
+        if not url:
+            print("DATABASE_URL NÃO CONFIGURADO!")
+            return None
+
+        # Ajuste padrão do Render
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+
+        conn = psycopg2.connect(url)
+        return conn
+
     except Exception as e:
         print("Erro ao conectar no banco:", e)
         return None
 
 
 # ==========================================
-# ✅ CRIAR TABELA AUTOMÁTICA
+# ✅ CRIAR TABELA (SEM TRAVAR APP)
 # ==========================================
 def criar_tabela():
-    conn = conectar_banco()
-    if not conn:
-        return
+    try:
+        conn = conectar_banco()
+        if not conn:
+            return
 
-    cursor = conn.cursor()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS respostas (
-        id SERIAL PRIMARY KEY,
-        dados TEXT,
-        data_resposta TEXT
-    )
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS respostas (
+            id SERIAL PRIMARY KEY,
+            dados TEXT,
+            data_resposta TEXT
+        )
+        """)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
+
+        print("Tabela verificada/criada com sucesso.")
+
+    except Exception as e:
+        print("Erro ao criar tabela:", e)
 
 
-# ✅ executa quando inicia
-criar_tabela()
+# ✅ NÃO TRAVAR O APP NA INICIALIZAÇÃO
+try:
+    criar_tabela()
+except Exception as e:
+    print("Erro na inicialização:", e)
 
 
 # ==========================================
@@ -55,33 +77,38 @@ def limpar_id(texto):
 
 
 # ==========================================
-# ✅ CARREGAR PERGUNTAS
+# ✅ CARREGAR PERGUNTAS (COM PROTEÇÃO)
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    caminho_excel = os.path.join(base_dir, nome_formulario)
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        caminho_excel = os.path.join(base_dir, nome_formulario)
 
-    df = pd.read_excel(caminho_excel, engine="openpyxl")
+        df = pd.read_excel(caminho_excel, engine="openpyxl")
 
-    df.columns = df.columns.str.strip().str.lower()
-    df = df.fillna("")
+        df.columns = df.columns.str.strip().str.lower()
+        df = df.fillna("")
 
-    for col in df.columns:
-        df[col] = df[col].astype(str).str.strip()
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
 
-    perguntas = df.to_dict(orient='records')
+        perguntas = df.to_dict(orient='records')
 
-    mapa_ids = {}
+        mapa_ids = {}
 
-    for p in perguntas:
-        p["id"] = limpar_id(p["pergunta"])
-        mapa_ids[p["pergunta"]] = p["id"]
+        for p in perguntas:
+            p["id"] = limpar_id(p["pergunta"])
+            mapa_ids[p["pergunta"]] = p["id"]
 
-    for p in perguntas:
-        depende = p.get("depende_de", "")
-        p["depende_id"] = mapa_ids.get(depende, "")
+        for p in perguntas:
+            depende = p.get("depende_de", "")
+            p["depende_id"] = mapa_ids.get(depende, "")
 
-    return perguntas
+        return perguntas
+
+    except Exception as e:
+        print("Erro ao carregar perguntas:", e)
+        return []
 
 
 # ==========================================
@@ -90,11 +117,14 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
 @app.route('/form')
 def formulario():
     try:
+        perguntas = carregar_perguntas()
+
         return render_template(
             'form.html',
-            perguntas=carregar_perguntas(),
+            perguntas=perguntas,
             titulo="Pesquisa de Clientes"
         )
+
     except Exception as e:
         return f"Erro ao carregar formulário: {e}"
 
@@ -125,17 +155,17 @@ def resposta():
         depende = p.get("depende_id", "")
         cond = str(p.get("valor_condicao", "")).strip().lower()
 
-        # valida dependência
+        # ✅ dependência
         if depende:
             valor_dep = request.form.get(depende, "").strip().lower()
             if valor_dep != cond:
                 continue
 
-        # valida obrigatório
+        # ✅ obrigatório
         if obrigatorio and valor == "":
             erros.append(f"O campo '{p['pergunta']}' é obrigatório.")
 
-        # valida lista
+        # ✅ lista
         if p["tipo"] == "lista":
             opcoes = p.get("opcoes", "")
             if opcoes:
@@ -150,6 +180,7 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
+    # ✅ data
     dados["data_resposta"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
     # ==========================================
@@ -179,6 +210,14 @@ def resposta():
         flash("Erro de conexão com o banco.", "erro")
 
     return redirect(url_for("formulario"))
+
+
+# ==========================================
+# ✅ HEALTH CHECK (IMPORTANTE PARA DEBUG)
+# ==========================================
+@app.route('/status')
+def status():
+    return "APP ONLINE ✅"
 
 
 # ==========================================
