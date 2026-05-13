@@ -13,7 +13,7 @@ app.secret_key = "chave_secreta"
 # 🔐 CREDENCIAIS
 USUARIO_ADMIN = "admin"
 SENHA_ADMIN = "12345"
-SENHA_LIMPEZA = "abc123"  # ✅ senha extra para apagar
+SENHA_LIMPEZA = "abc123"
 
 # ==========================================
 # ✅ CONEXÃO COM BANCO
@@ -76,7 +76,6 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
         caminho_excel = os.path.join(base_dir, nome_formulario)
 
         df = pd.read_excel(caminho_excel, engine="openpyxl")
-
         df.columns = df.columns.str.strip().str.lower()
         df = df.fillna("")
 
@@ -163,7 +162,6 @@ def resposta():
         )
         conn.commit()
         conn.close()
-
         flash("✅ Resposta salva com sucesso!", "sucesso")
     else:
         flash("Erro no banco", "erro")
@@ -171,7 +169,7 @@ def resposta():
     return redirect(url_for("formulario"))
 
 # ==========================================
-@app.route('/admin', methods=['GET'])
+@app.route('/admin')
 def admin():
     usuario = request.args.get("usuario")
     senha = request.args.get("senha")
@@ -179,7 +177,7 @@ def admin():
     if usuario != USUARIO_ADMIN or senha != SENHA_ADMIN:
         return "⛔ Acesso não autorizado"
 
-    return f'''
+    return '''
         <h2>⚙️ Painel Administrativo</h2>
 
         <h3>📥 Exportar respostas</h3>
