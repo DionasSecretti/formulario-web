@@ -23,6 +23,7 @@ TIMEZONE = ZoneInfo("America/Sao_Paulo")
 def agora_formatado():
     return datetime.now(TIMEZONE).strftime("%d/%m/%Y %H:%M")
 
+
 # ==========================================
 def conectar_banco():
     try:
@@ -40,6 +41,7 @@ def conectar_banco():
     except Exception as e:
         print("Erro ao conectar no banco:", e)
         return None
+
 
 # ==========================================
 def criar_tabela():
@@ -61,16 +63,19 @@ def criar_tabela():
     except Exception as e:
         print("Erro ao criar tabela:", e)
 
+
 try:
     criar_tabela()
 except:
     pass
+
 
 # ==========================================
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
+
 
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
@@ -102,6 +107,7 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
         print("Erro ao carregar perguntas:", e)
         return []
 
+
 # ==========================================
 @app.route('/form')
 def formulario():
@@ -111,9 +117,11 @@ def formulario():
         titulo="Pesquisa de Clientes"
     )
 
+
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
+
 
 # ==========================================
 @app.route('/resposta', methods=['POST'])
@@ -171,6 +179,37 @@ def resposta():
 
     return redirect(url_for("formulario"))
 
+
+# ==========================================
+@app.route('/respostas')
+def ver_respostas():
+    senha = request.args.get("senha")
+
+    if senha != SENHA_ADMIN:
+        return "⛔ Acesso não autorizado"
+
+    try:
+        conn = conectar_banco()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT id, dados, data_resposta FROM respostas ORDER BY id DESC")
+        resultados = cursor.fetchall()
+        conn.close()
+
+        html = "<h2>📋 Respostas</h2><table border='1' cellpadding='8'>"
+        html += "<tr><th>ID</th><th>Data</th><th>Dados</th></tr>"
+
+        for r in resultados:
+            html += f"<tr><td>{r[0]}</td><td>{r[2]}</td><td>{r[1]}</td></tr>"
+
+        html += "</table>"
+
+        return html
+
+    except Exception as e:
+        return f"Erro ao carregar respostas: {e}"
+
+
 # ==========================================
 @app.route('/admin')
 def admin():
@@ -184,91 +223,36 @@ def admin():
     <html>
     <head>
         <title>Painel Administrativo</title>
-        <style>
-            body {
-                font-family: Arial;
-                background: #f4f6f9;
-                padding: 40px;
-            }
-
-            .container {
-                max-width: 500px;
-                margin: auto;
-                background: white;
-                padding: 30px;
-                border-radius: 12px;
-                box-shadow: 0 6px 18px rgba(0,0,0,0.1);
-            }
-
-            h2, h3 {
-                text-align: center;
-            }
-
-            .acoes {
-                display: flex;
-                gap: 10px;
-                margin-bottom: 25px;
-            }
-
-            .botao {
-                flex: 1;
-                padding: 12px;
-                text-align: center;
-                border-radius: 6px;
-                text-decoration: none;
-                font-weight: bold;
-                color: white;
-            }
-
-            .exportar { background: #1e73e8; }
-            .ver { background: #28a745; }
-
-            input {
-                width: 100%;
-                padding: 10px;
-                margin-top: 8px;
-                border-radius: 6px;
-                border: 1px solid #ccc;
-                box-sizing: border-box;
-            }
-
-            button {
-                margin-top: 15px;
-                width: 100%;
-                padding: 12px;
-                background: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-            }
-        </style>
     </head>
 
-    <body>
-        <div class="container">
+    <body style="font-family: Arial; background:#f4f6f9; padding:40px;">
 
-            <h2>⚙️ Painel Administrativo</h2>
+        <div style="max-width:500px;margin:auto;background:white;padding:30px;border-radius:10px;box-shadow:0 5px 15px rgba(0,0,0,0.1);">
 
-            <div class="acoes">
-                <a class="botao exportar" href="/exportar">📥 Exportar Excel</a>
-                <a class="botao ver" href="/respostas?senha=12345">📋 Ver Respostas</a>
+            <h2 style="text-align:center;">⚙️ Painel Administrativo</h2>
+
+            <div style="display:flex;gap:10px;margin-bottom:20px;">
+                <a href="/exportar" style="flex:1;padding:10px;background:#1e73e8;color:white;text-align:center;border-radius:6px;">📥 Exportar</a>
+                <a href="/respostas?senha=12345" style="flex:1;padding:10px;background:#28a745;color:white;text-align:center;border-radius:6px;">📋 Ver Respostas</a>
             </div>
 
             <h3>🗑 Limpar banco</h3>
 
             <form method="post" action="/limpar">
-                <input type="password" name="senha_limpeza" placeholder="Senha de confirmação">
+                <input type="password" name="senha_limpeza" placeholder="Senha de confirmação" style="width:100%;padding:10px;margin-top:5px;">
 
-                <button onclick="return confirm('Tem certeza que deseja apagar TODOS os dados?')">
-                    ⚠️ Limpar todos os dados
+                <button onclick="return confirm('Tem certeza que deseja apagar TODOS os dados?')"
+                        style="margin-top:10px;width:100%;padding:10px;background:red;color:white;border:none;border-radius:6px;">
+                    ⚠️ Limpar tudo
                 </button>
             </form>
 
         </div>
+
     </body>
     </html>
     '''
+
 
 # ==========================================
 @app.route('/limpar', methods=['POST'])
@@ -288,6 +272,7 @@ def limpar_dados():
     except Exception as e:
         return f"Erro ao limpar: {e}"
 
+
 # ==========================================
 @app.route('/exportar', methods=['GET', 'POST'])
 def exportar():
@@ -300,31 +285,29 @@ def exportar():
 
         try:
             conn = conectar_banco()
-            cursor = conn.cursor()
-            cursor.execute("SELECT dados, data_resposta FROM respostas")
-            registros = cursor.fetchall()
+            df = pd.read_sql("SELECT dados, data_resposta FROM respostas", conn)
             conn.close()
 
             lista = []
-
-            for r in registros:
+            for _, row in df.iterrows():
                 try:
-                    dados = json.loads(r[0])
-                    dados["data_resposta"] = r[1]
+                    dados = json.loads(row["dados"])
+                    dados["data_resposta"] = row["data_resposta"]
                     lista.append(dados)
                 except:
                     continue
 
-            df = pd.DataFrame(lista)
+            df_final = pd.DataFrame(lista)
 
             output = io.BytesIO()
-            df.to_excel(output, index=False)
+            df_final.to_excel(output, index=False, engine='openpyxl')
             output.seek(0)
 
             return send_file(
                 output,
                 as_attachment=True,
-                download_name="respostas_formulario.xlsx"
+                download_name="respostas_formulario.xlsx",
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
         except Exception as e:
@@ -339,10 +322,12 @@ def exportar():
         </form>
     '''
 
+
 # ==========================================
 @app.route('/status')
 def status():
     return "APP ONLINE ✅"
+
 
 # ==========================================
 if __name__ == "__main__":
