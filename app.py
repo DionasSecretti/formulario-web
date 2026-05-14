@@ -16,19 +16,13 @@ USUARIO_ADMIN = "admin"
 SENHA_ADMIN = "12345"
 SENHA_LIMPEZA = "abc123"
 
-# 🌎 TIMEZONE PADRÃO
+# 🌎 TIMEZONE
 TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
-
-# ==========================================
-# ✅ FUNÇÃO PADRÃO DE DATA/HORA
 # ==========================================
 def agora_formatado():
     return datetime.now(TIMEZONE).strftime("%d/%m/%Y %H:%M")
 
-
-# ==========================================
-# ✅ CONEXÃO COM BANCO
 # ==========================================
 def conectar_banco():
     try:
@@ -47,9 +41,6 @@ def conectar_banco():
         print("Erro ao conectar no banco:", e)
         return None
 
-
-# ==========================================
-# ✅ CRIAR TABELA
 # ==========================================
 def criar_tabela():
     try:
@@ -67,23 +58,19 @@ def criar_tabela():
         """)
         conn.commit()
         conn.close()
-
     except Exception as e:
         print("Erro ao criar tabela:", e)
-
 
 try:
     criar_tabela()
 except:
     pass
 
-
 # ==========================================
 def limpar_id(texto):
     texto = str(texto).strip().lower()
     texto = re.sub(r'[^a-z0-9 ]', '', texto)
     return texto.replace(" ", "_")
-
 
 # ==========================================
 def carregar_perguntas(nome_formulario="Formulario.xlsx"):
@@ -115,7 +102,6 @@ def carregar_perguntas(nome_formulario="Formulario.xlsx"):
         print("Erro ao carregar perguntas:", e)
         return []
 
-
 # ==========================================
 @app.route('/form')
 def formulario():
@@ -125,11 +111,9 @@ def formulario():
         titulo="Pesquisa de Clientes"
     )
 
-
 @app.route('/')
 def home():
     return redirect(url_for("formulario"))
-
 
 # ==========================================
 @app.route('/resposta', methods=['POST'])
@@ -169,7 +153,6 @@ def resposta():
             flash(erro, "erro")
         return redirect(url_for("formulario"))
 
-    # ✅ DATA CORRETA (BRASIL)
     dados["data_resposta"] = agora_formatado()
 
     conn = conectar_banco()
@@ -188,7 +171,6 @@ def resposta():
 
     return redirect(url_for("formulario"))
 
-
 # ==========================================
 @app.route('/admin')
 def admin():
@@ -199,24 +181,94 @@ def admin():
         return "⛔ Acesso não autorizado"
 
     return '''
-        <h2>⚙️ Painel Administrativo</h2>
+    <html>
+    <head>
+        <title>Painel Administrativo</title>
+        <style>
+            body {
+                font-family: Arial;
+                background: #f4f6f9;
+                padding: 40px;
+            }
 
-        <h3>📥 Exportar respostas</h3>
-        <a href="/exportar">Ir para exportação</a>
+            .container {
+                max-width: 500px;
+                margin: auto;
+                background: white;
+                padding: 30px;
+                border-radius: 12px;
+                box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+            }
 
-        <hr>
+            h2, h3 {
+                text-align: center;
+            }
 
-        <h3>🗑 Limpar banco</h3>
-        <form method="post" action="/limpar">
-            <label>Senha de confirmação:</label><br>
-            <input type="password" name="senha_limpeza"><br><br>
+            .acoes {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 25px;
+            }
 
-            <button style="background:red;color:white;padding:10px;">
-                ⚠️ Limpar todos os dados
-            </button>
-        </form>
+            .botao {
+                flex: 1;
+                padding: 12px;
+                text-align: center;
+                border-radius: 6px;
+                text-decoration: none;
+                font-weight: bold;
+                color: white;
+            }
+
+            .exportar { background: #1e73e8; }
+            .ver { background: #28a745; }
+
+            input {
+                width: 100%;
+                padding: 10px;
+                margin-top: 8px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+                box-sizing: border-box;
+            }
+
+            button {
+                margin-top: 15px;
+                width: 100%;
+                padding: 12px;
+                background: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+
+            <h2>⚙️ Painel Administrativo</h2>
+
+            <div class="acoes">
+                <a class="botao exportar" href="/exportar">📥 Exportar Excel</a>
+                <a class="botao ver" href="/respostas?senha=12345">📋 Ver Respostas</a>
+            </div>
+
+            <h3>🗑 Limpar banco</h3>
+
+            <form method="post" action="/limpar">
+                <input type="password" name="senha_limpeza" placeholder="Senha de confirmação">
+
+                <button onclick="return confirm('Tem certeza que deseja apagar TODOS os dados?')">
+                    ⚠️ Limpar todos os dados
+                </button>
+            </form>
+
+        </div>
+    </body>
+    </html>
     '''
-
 
 # ==========================================
 @app.route('/limpar', methods=['POST'])
@@ -224,22 +276,17 @@ def limpar_dados():
     senha = request.form.get("senha_limpeza")
 
     if senha != SENHA_LIMPEZA:
-        return "⛔ Senha de confirmação incorreta"
+        return "⛔ Senha incorreta"
 
     try:
         conn = conectar_banco()
         cursor = conn.cursor()
-
         cursor.execute("TRUNCATE TABLE respostas RESTART IDENTITY")
-
         conn.commit()
         conn.close()
-
         return "✅ Banco limpo com sucesso!"
-
     except Exception as e:
         return f"Erro ao limpar: {e}"
-
 
 # ==========================================
 @app.route('/exportar', methods=['GET', 'POST'])
@@ -254,7 +301,6 @@ def exportar():
         try:
             conn = conectar_banco()
             cursor = conn.cursor()
-
             cursor.execute("SELECT dados, data_resposta FROM respostas")
             registros = cursor.fetchall()
             conn.close()
@@ -269,20 +315,16 @@ def exportar():
                 except:
                     continue
 
-            if not lista:
-                return "Nenhum dado encontrado"
-
             df = pd.DataFrame(lista)
 
             output = io.BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl')
+            df.to_excel(output, index=False)
             output.seek(0)
 
             return send_file(
                 output,
                 as_attachment=True,
-                download_name="respostas_formulario.xlsx",
-                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                download_name="respostas_formulario.xlsx"
             )
 
         except Exception as e:
@@ -291,22 +333,16 @@ def exportar():
     return '''
         <h2>🔐 Acesso para Exportar</h2>
         <form method="post">
-            <label>Usuário:</label><br>
-            <input type="text" name="usuario"><br><br>
-
-            <label>Senha:</label><br>
-            <input type="password" name="senha"><br><br>
-
-            <button type="submit">📥 Baixar Excel</button>
+            <input type="text" name="usuario" placeholder="Usuário"><br><br>
+            <input type="password" name="senha" placeholder="Senha"><br><br>
+            <button type="submit">Baixar Excel</button>
         </form>
     '''
-
 
 # ==========================================
 @app.route('/status')
 def status():
     return "APP ONLINE ✅"
-
 
 # ==========================================
 if __name__ == "__main__":
